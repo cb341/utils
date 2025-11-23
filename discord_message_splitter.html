@@ -40,6 +40,12 @@
                 resultsDiv.innerHTML = '';
                 return;
             }
+
+            // Only split messages longer than 100 chars to avoid hangs
+            if (message.length <= 100) {
+                resultsDiv.innerHTML = '<p>Message is too short to split (must be over 100 characters).</p>';
+                return;
+            }
             
             const parts = [];
             let remaining = message;
