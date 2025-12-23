@@ -7,13 +7,15 @@
     <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
 </head>
 <body>
-    <main>
+    <header>
         <h1>Discord Message Splitter</h1>
+        <p>Split long messages into Discord-compatible chunks with smart newline handling</p>
+    </header>
 
+    <main>
         <p>
-            This tool is designed to help you split long messages into smaller parts that can be sent in Discord. (Purely Client Side)
+            <a href="index.html">Back to Home</a>
         </p>
-        <a href="index.html">Back to Home</a>
         
         <label for="message">Original Message:</label>
         <textarea id="message" rows="10" placeholder="Paste your long message here and see the results..."></textarea>
@@ -231,5 +233,9 @@
         document.getElementById('message').addEventListener('input', splitMessage);
         document.getElementById('length').addEventListener('input', splitMessage);
     </script>
+
+    <footer>
+        <p><a href="https://github.com/CuddlyBunion341/utils">View on GitHub</a></p>
+    </footer>
 </body>
 </html>
