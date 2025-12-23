@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Regex Intersection Checker</title>
+  <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
+</head>
+<body>
+  <header>
+    <h1>Regex Intersection Checker</h1>
+    <p>Find the smallest word that matches two regular expressions using NFAs</p>
+  </header>
+
+  <main>
+    <p>
+      <a href="index.html">Back to Home</a>
+    </p>
+
+    <p>
+      <button id="pairTabBtn" data-tab="pair">Pair Comparison</button>
+      <button id="bulkTabBtn" data-tab="bulk">Bulk Check</button>
+    </p>
+
+    <div id="pairTab">
+      <section>
+        <h2>Input</h2>
+        <form id="regexForm">
+          <label for="regex1">
+            First Regex:
+            <input type="text" id="regex1" name="regex1" placeholder="a*b" required>
+          </label>
+
+          <label for="regex2">
+            Second Regex:
+            <input type="text" id="regex2" name="regex2" placeholder="ab*" required>
+          </label>
+
+          <button type="submit">Find Intersection</button>
+          <button type="button" id="clearBtn">Clear</button>
+        </form>
+
+        <details>
+          <summary>Supported Syntax</summary>
+          <ul>
+            <li>Literals: <code>a</code>, <code>b</code>, <code>0</code>, etc.</li>
+            <li>Concatenation: <code>ab</code> (a followed by b)</li>
+            <li>Alternation: <code>a|b</code> (a or b)</li>
+            <li>Kleene star: <code>a*</code> (zero or more a's)</li>
+            <li>Plus: <code>a+</code> (one or more a's)</li>
+            <li>Optional: <code>a?</code> (zero or one a)</li>
+            <li>Grouping: <code>(ab)*</code></li>
+          </ul>
+          <h4>Example Pairs</h4>
+          <ul>
+            <li><code>a*b</code> and <code>ab*</code> → <code>ab</code></li>
+            <li><code>(ab)*</code> and <code>(ba)*</code> → <code>ε</code> (empty string)</li>
+            <li><code>a+</code> and <code>a*b</code> → <code>ab</code></li>
+            <li><code>(0|1)*0</code> and <code>0(0|1)*</code> → <code>0</code></li>
+          </ul>
+        </details>
+      </section>
+    </div>
+
+    <div id="bulkTab" style="display: none;">
+      <section>
+        <h2>Bulk Uniqueness Check</h2>
+        <p>Enter one regex per line. The tool will check all pairs to verify they don't overlap.</p>
+
+        <form id="bulkForm">
+          <label for="bulkRegexes">
+            Regular Expressions (one per line):
+            <textarea id="bulkRegexes" rows="15" placeholder="a*b&#10;ab*&#10;(a|b)*c&#10;c(a|b)*&#10;..." required></textarea>
+          </label>
+
+          <button type="submit">Check All Pairs</button>
+          <button type="button" id="bulkClearBtn">Clear</button>
+          <button type="button" id="loadExample">Load Example</button>
+        </form>
+      </section>
+
+      <section id="bulkResultSection" style="display: none;">
+        <div id="bulkSummary"></div>
+        <div id="bulkResults"></div>
+      </section>
+    </div>
+
+    <section id="resultSection" style="display: none;">
+      <h2>Result</h2>
+      <div id="result"></div>
+    </section>
+
+    <section id="nfa1Section" style="display: none;">
+      <h2>NFA for Regex 1</h2>
+      <div id="nfa1"></div>
+    </section>
+
+    <section id="nfa2Section" style="display: none;">
+      <h2>NFA for Regex 2</h2>
+      <div id="nfa2"></div>
+    </section>
+
+    <section id="intersectionSection" style="display: none;">
+      <h2>Intersection NFA</h2>
+      <div id="intersection"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Built with NFAs using Thompson's construction</p>
+  </footer>
+
+  <script>
+// NFA State class
+class State {
+  constructor(id) {
+    this.id = id;
+    this.transitions = {}; // char -> [states]
+    this.epsilonTransitions = []; // epsilon transitions
+    this.isAccept = false;
+  }
+
+  addTransition(char, state) {
+    if (!this.transitions[char]) {
+      this.transitions[char] = [];
+    }
+    this.transitions[char].push(state);
+  }
+
+  addEpsilonTransition(state) {
+    this.epsilonTransitions.push(state);
+  }
+}
+
+// NFA class
+class NFA {
+  constructor(start, accept) {
+    this.start = start;
+    this.accept = accept;
+    this.accept.isAccept = true;
+  }
+
+  // Get epsilon closure of a set of states
+  static epsilonClosure(states) {
+    const closure = new Set(states);
+    const stack = [...states];
+
+    while (stack.length > 0) {
+      const state = stack.pop();
+      for (const nextState of state.epsilonTransitions) {
+        if (!closure.has(nextState)) {
+          closure.add(nextState);
+          stack.push(nextState);
+        }
+      }
+    }
+
+    return closure;
+  }
+
+  // Move on a character from a set of states
+  static move(states, char) {
+    const result = new Set();
+    for (const state of states) {
+      if (state.transitions[char]) {
+        for (const nextState of state.transitions[char]) {
+          result.add(nextState);
+        }
+      }
+    }
+    return result;
+  }
+
+  // Get all states in the NFA
+  getAllStates() {
+    const visited = new Set();
+    const stack = [this.start];
+
+    while (stack.length > 0) {
+      const state = stack.pop();
+      if (visited.has(state)) continue;
+      visited.add(state);
+
+      for (const states of Object.values(state.transitions)) {
+        for (const s of states) {
+          if (!visited.has(s)) stack.push(s);
+        }
+      }
+
+      for (const s of state.epsilonTransitions) {
+        if (!visited.has(s)) stack.push(s);
+      }
+    }
+
+    return visited;
+  }
+
+  // Get alphabet from the NFA
+  getAlphabet() {
+    const alphabet = new Set();
+    const states = this.getAllStates();
+
+    for (const state of states) {
+      for (const char of Object.keys(state.transitions)) {
+        alphabet.add(char);
+      }
+    }
+
+    return alphabet;
+  }
+}
+
+// Regex parser and NFA builder using Thompson's construction
+class RegexParser {
+  constructor() {
+    this.stateCounter = 0;
+  }
+
+  createState() {
+    return new State(this.stateCounter++);
+  }
+
+  // Parse regex and build NFA
+  parse(regex) {
+    this.stateCounter = 0;
+    this.regex = regex;
+    this.pos = 0;
+    return this.parseAlternation();
+  }
+
+  peek() {
+    return this.pos < this.regex.length ? this.regex[this.pos] : null;
+  }
+
+  consume() {
+    return this.regex[this.pos++];
+  }
+
+  // Parse alternation (lowest precedence)
+  parseAlternation() {
+    let left = this.parseConcatenation();
+
+    while (this.peek() === '|') {
+      this.consume(); // consume '|'
+      const right = this.parseConcatenation();
+      left = this.alternate(left, right);
+    }
+
+    return left;
+  }
+
+  // Parse concatenation
+  parseConcatenation() {
+    const fragments = [];
+
+    while (this.peek() && this.peek() !== ')' && this.peek() !== '|') {
+      fragments.push(this.parseRepetition());
+    }
+
+    if (fragments.length === 0) {
+      // Empty regex
+      const start = this.createState();
+      const accept = this.createState();
+      start.addEpsilonTransition(accept);
+      return new NFA(start, accept);
+    }
+
+    // Concatenate all fragments
+    return fragments.reduce((acc, frag) => this.concatenate(acc, frag));
+  }
+
+  // Parse repetition operators (*, +, ?)
+  parseRepetition() {
+    let base = this.parseBase();
+
+    while (this.peek() === '*' || this.peek() === '+' || this.peek() === '?') {
+      const op = this.consume();
+      if (op === '*') {
+        base = this.star(base);
+      } else if (op === '+') {
+        base = this.plus(base);
+      } else if (op === '?') {
+        base = this.optional(base);
+      }
+    }
+
+    return base;
+  }
+
+  // Parse base elements (characters, groups)
+  parseBase() {
+    const char = this.peek();
+
+    if (char === '(') {
+      this.consume(); // consume '('
+      const nfa = this.parseAlternation();
+      if (this.peek() !== ')') {
+        throw new Error('Unmatched parenthesis');
+      }
+      this.consume(); // consume ')'
+      return nfa;
+    } else if (char === '\\') {
+      this.consume(); // consume '\\'
+      const escaped = this.consume();
+      if (!escaped) {
+        throw new Error('Invalid escape sequence');
+      }
+      return this.literal(escaped);
+    } else if (char && char !== ')' && char !== '|' && char !== '*' && char !== '+' && char !== '?') {
+      this.consume();
+      return this.literal(char);
+    } else {
+      throw new Error(`Unexpected character: ${char}`);
+    }
+  }
+
+  // NFA construction primitives
+
+  literal(char) {
+    const start = this.createState();
+    const accept = this.createState();
+    start.addTransition(char, accept);
+    return new NFA(start, accept);
+  }
+
+  concatenate(first, second) {
+    first.accept.isAccept = false;
+    first.accept.addEpsilonTransition(second.start);
+    return new NFA(first.start, second.accept);
+  }
+
+  alternate(first, second) {
+    const start = this.createState();
+    const accept = this.createState();
+
+    start.addEpsilonTransition(first.start);
+    start.addEpsilonTransition(second.start);
+
+    first.accept.isAccept = false;
+    second.accept.isAccept = false;
+
+    first.accept.addEpsilonTransition(accept);
+    second.accept.addEpsilonTransition(accept);
+
+    return new NFA(start, accept);
+  }
+
+  star(nfa) {
+    const start = this.createState();
+    const accept = this.createState();
+
+    start.addEpsilonTransition(nfa.start);
+    start.addEpsilonTransition(accept);
+
+    nfa.accept.isAccept = false;
+    nfa.accept.addEpsilonTransition(nfa.start);
+    nfa.accept.addEpsilonTransition(accept);
+
+    return new NFA(start, accept);
+  }
+
+  plus(nfa) {
+    const accept = this.createState();
+
+    nfa.accept.isAccept = false;
+    nfa.accept.addEpsilonTransition(nfa.start);
+    nfa.accept.addEpsilonTransition(accept);
+
+    return new NFA(nfa.start, accept);
+  }
+
+  optional(nfa) {
+    const start = this.createState();
+    const accept = this.createState();
+
+    start.addEpsilonTransition(nfa.start);
+    start.addEpsilonTransition(accept);
+
+    nfa.accept.isAccept = false;
+    nfa.accept.addEpsilonTransition(accept);
+
+    return new NFA(start, accept);
+  }
+}
+
+// NFA Intersection
+class NFAIntersection {
+  constructor(nfa1, nfa2) {
+    this.nfa1 = nfa1;
+    this.nfa2 = nfa2;
+    this.stateMap = new Map(); // Map from (state1, state2) key to new state
+    this.stateCounter = 0;
+  }
+
+  getStateKey(state1, state2) {
+    return `${state1.id},${state2.id}`;
+  }
+
+  createState(state1, state2) {
+    const key = this.getStateKey(state1, state2);
+    if (this.stateMap.has(key)) {
+      return this.stateMap.get(key);
+    }
+
+    const newState = new State(this.stateCounter++);
+    newState.isAccept = state1.isAccept && state2.isAccept;
+    this.stateMap.set(key, newState);
+    return newState;
+  }
+
+  intersect() {
+    // Get epsilon closures of start states
+    const start1Closure = NFA.epsilonClosure([this.nfa1.start]);
+    const start2Closure = NFA.epsilonClosure([this.nfa2.start]);
+
+    // Create start state for intersection
+    const startState = this.createState(this.nfa1.start, this.nfa2.start);
+
+    // Combined alphabet
+    const alphabet = new Set([...this.nfa1.getAlphabet(), ...this.nfa2.getAlphabet()]);
+
+    // BFS to build intersection NFA
+    const queue = [[start1Closure, start2Closure, startState]];
+    const visited = new Set();
+    visited.add(this.getStateKey(this.nfa1.start, this.nfa2.start));
+
+    let acceptState = null;
+
+    while (queue.length > 0) {
+      const [closure1, closure2, currentState] = queue.shift();
+
+      // Check if this is an accept state
+      const hasAccept1 = Array.from(closure1).some(s => s.isAccept);
+      const hasAccept2 = Array.from(closure2).some(s => s.isAccept);
+
+      if (hasAccept1 && hasAccept2) {
+        currentState.isAccept = true;
+        if (!acceptState) {
+          acceptState = currentState;
+        }
+      }
+
+      // For each character in alphabet
+      for (const char of alphabet) {
+        const next1 = NFA.move(closure1, char);
+        const next2 = NFA.move(closure2, char);
+
+        if (next1.size === 0 || next2.size === 0) continue;
+
+        const nextClosure1 = NFA.epsilonClosure(next1);
+        const nextClosure2 = NFA.epsilonClosure(next2);
+
+        // Create representative states (just pick first from each closure)
+        const rep1 = Array.from(nextClosure1)[0];
+        const rep2 = Array.from(nextClosure2)[0];
+
+        const nextState = this.createState(rep1, rep2);
+        currentState.addTransition(char, nextState);
+
+        const key = this.getStateKey(rep1, rep2);
+        if (!visited.has(key)) {
+          visited.add(key);
+          queue.push([nextClosure1, nextClosure2, nextState]);
+        }
+      }
+    }
+
+    if (!acceptState) {
+      // No intersection - create a dummy accept state
+      acceptState = new State(this.stateCounter++);
+      acceptState.isAccept = true;
+    }
+
+    return new NFA(startState, acceptState);
+  }
+}
+
+// Find shortest word accepted by NFA
+function findShortestWord(nfa) {
+  const alphabet = Array.from(nfa.getAlphabet()).sort();
+
+  if (alphabet.length === 0) {
+    // Check if empty string is accepted
+    const closure = NFA.epsilonClosure([nfa.start]);
+    const hasAccept = Array.from(closure).some(s => s.isAccept);
+    return hasAccept ? '' : null;
+  }
+
+  // BFS
+  const queue = [{states: NFA.epsilonClosure([nfa.start]), word: ''}];
+  const visited = new Set();
+
+  while (queue.length > 0) {
+    const {states, word} = queue.shift();
+
+    // Check if any state is accept
+    const hasAccept = Array.from(states).some(s => s.isAccept);
+    if (hasAccept) {
+      return word;
+    }
+
+    // Limit search depth
+    if (word.length > 20) {
+      continue;
+    }
+
+    // Try each character
+    for (const char of alphabet) {
+      const nextStates = NFA.move(states, char);
+      if (nextStates.size === 0) continue;
+
+      const closure = NFA.epsilonClosure(nextStates);
+      const stateKey = Array.from(closure).map(s => s.id).sort().join(',');
+      const visitKey = `${stateKey}:${word.length + 1}`;
+
+      if (!visited.has(visitKey)) {
+        visited.add(visitKey);
+        queue.push({states: closure, word: word + char});
+      }
+    }
+  }
+
+  return null; // No word found
+}
+
+// NFA Visualizer using SVG
+class NFAVisualizer {
+  constructor(nfa, containerId) {
+    this.nfa = nfa;
+    this.container = document.getElementById(containerId);
+    this.positions = new Map();
+    this.edgeOffset = 0;
+  }
+
+  // Layout states using force-directed approach (simplified)
+  layoutStates() {
+    const states = Array.from(this.nfa.getAllStates());
+    const layers = this.assignLayers(states);
+
+    // Position states by layers
+    const layerArray = Array.from(layers.entries()).sort((a, b) => a[0] - b[0]);
+
+    layerArray.forEach(([layerNum, layerStates], idx) => {
+      const y = 80 + idx * 100;
+      const layerWidth = layerStates.length;
+      const spacing = Math.min(120, 600 / (layerWidth + 1));
+
+      layerStates.forEach((state, i) => {
+        const x = 100 + (i + 1) * spacing;
+        this.positions.set(state, {x, y});
+      });
+    });
+  }
+
+  // Assign states to layers using BFS
+  assignLayers(states) {
+    const layers = new Map();
+    const visited = new Set();
+    const queue = [{state: this.nfa.start, layer: 0}];
+
+    visited.add(this.nfa.start);
+    layers.set(0, [this.nfa.start]);
+
+    while (queue.length > 0) {
+      const {state, layer} = queue.shift();
+
+      const allNext = [
+        ...state.epsilonTransitions,
+        ...Object.values(state.transitions).flat()
+      ];
+
+      for (const next of allNext) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          const nextLayer = layer + 1;
+
+          if (!layers.has(nextLayer)) {
+            layers.set(nextLayer, []);
+          }
+          layers.get(nextLayer).push(next);
+          queue.push({state: next, layer: nextLayer});
+        }
+      }
+    }
+
+    return layers;
+  }
+
+  // Draw the NFA
+  draw() {
+    this.container.innerHTML = '';
+    this.layoutStates();
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '600');
+    svg.style.border = '1px solid #ccc';
+    svg.style.background = '#fafafa';
+
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrowhead');
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '10');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', '0 0, 10 3, 0 6');
+    polygon.setAttribute('fill', '#333');
+
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    // Draw edges first
+    const states = this.nfa.getAllStates();
+    for (const state of states) {
+      this.drawEdges(svg, state);
+    }
+
+    // Draw states on top
+    for (const state of states) {
+      this.drawState(svg, state);
+    }
+
+    this.container.appendChild(svg);
+  }
+
+  drawState(svg, state) {
+    const pos = this.positions.get(state);
+    if (!pos) return;
+
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+    // Draw circle
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', pos.x);
+    circle.setAttribute('cy', pos.y);
+    circle.setAttribute('r', '20');
+    circle.setAttribute('fill', state === this.nfa.start ? '#d4edda' : '#fff');
+    circle.setAttribute('stroke', '#333');
+    circle.setAttribute('stroke-width', '2');
+
+    // Double circle for accept states
+    if (state.isAccept) {
+      const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      innerCircle.setAttribute('cx', pos.x);
+      innerCircle.setAttribute('cy', pos.y);
+      innerCircle.setAttribute('r', '16');
+      innerCircle.setAttribute('fill', 'none');
+      innerCircle.setAttribute('stroke', '#333');
+      innerCircle.setAttribute('stroke-width', '2');
+      group.appendChild(innerCircle);
+    }
+
+    group.appendChild(circle);
+
+    // Draw state label
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', pos.x);
+    text.setAttribute('y', pos.y + 5);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '12');
+    text.setAttribute('fill', '#333');
+    text.textContent = state.id;
+
+    group.appendChild(text);
+    svg.appendChild(group);
+  }
+
+  drawEdges(svg, state) {
+    const pos = this.positions.get(state);
+    if (!pos) return;
+
+    // Draw epsilon transitions
+    for (const target of state.epsilonTransitions) {
+      this.drawEdge(svg, state, target, 'ε');
+    }
+
+    // Draw character transitions
+    for (const [char, targets] of Object.entries(state.transitions)) {
+      for (const target of targets) {
+        this.drawEdge(svg, state, target, char);
+      }
+    }
+  }
+
+  drawEdge(svg, from, to, label) {
+    const fromPos = this.positions.get(from);
+    const toPos = this.positions.get(to);
+
+    if (!fromPos || !toPos) return;
+
+    // Self-loop
+    if (from === to) {
+      this.drawSelfLoop(svg, from, label);
+      return;
+    }
+
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist === 0) return;
+
+    // Adjust for circle radius
+    const radius = 20;
+    const startX = fromPos.x + (dx / dist) * radius;
+    const startY = fromPos.y + (dy / dist) * radius;
+    const endX = toPos.x - (dx / dist) * radius;
+    const endY = toPos.y - (dy / dist) * radius;
+
+    // Draw line
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', startX);
+    line.setAttribute('y1', startY);
+    line.setAttribute('x2', endX);
+    line.setAttribute('y2', endY);
+    line.setAttribute('stroke', '#666');
+    line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('marker-end', 'url(#arrowhead)');
+
+    svg.appendChild(line);
+
+    // Draw label
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', midX);
+    text.setAttribute('y', midY - 5);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '11');
+    text.setAttribute('fill', '#d9534f');
+    text.setAttribute('font-weight', 'bold');
+
+    // Background for label
+    const bbox = {x: midX - 10, y: midY - 15, width: 20, height: 14};
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('x', bbox.x);
+    bg.setAttribute('y', bbox.y);
+    bg.setAttribute('width', bbox.width);
+    bg.setAttribute('height', bbox.height);
+    bg.setAttribute('fill', '#fafafa');
+    bg.setAttribute('opacity', '0.8');
+
+    svg.appendChild(bg);
+
+    text.textContent = label;
+    svg.appendChild(text);
+  }
+
+  drawSelfLoop(svg, state, label) {
+    const pos = this.positions.get(state);
+    if (!pos) return;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const cx = pos.x;
+    const cy = pos.y - 20;
+    const r = 15;
+
+    const d = `M ${cx} ${cy}
+               C ${cx - r} ${cy - r * 2}, ${cx + r} ${cy - r * 2}, ${cx} ${cy}`;
+
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', '#666');
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+
+    svg.appendChild(path);
+
+    // Label
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', cx);
+    text.setAttribute('y', cy - r * 2 - 5);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '11');
+    text.setAttribute('fill', '#d9534f');
+    text.setAttribute('font-weight', 'bold');
+    text.textContent = label;
+
+    svg.appendChild(text);
+  }
+}
+
+// Main application logic
+
+// Tab switching
+document.getElementById('pairTabBtn').addEventListener('click', () => {
+  document.getElementById('pairTab').style.display = 'block';
+  document.getElementById('bulkTab').style.display = 'none';
+  hideAllSections();
+  document.getElementById('bulkResultSection').style.display = 'none';
+});
+
+document.getElementById('bulkTabBtn').addEventListener('click', () => {
+  document.getElementById('pairTab').style.display = 'none';
+  document.getElementById('bulkTab').style.display = 'block';
+  hideAllSections();
+});
+
+// Pair comparison form
+document.getElementById('regexForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+
+  const regex1 = document.getElementById('regex1').value.trim();
+  const regex2 = document.getElementById('regex2').value.trim();
+
+  try {
+    processRegexes(regex1, regex2);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  document.getElementById('regex1').value = '';
+  document.getElementById('regex2').value = '';
+  hideAllSections();
+});
+
+// Bulk checking form
+document.getElementById('bulkForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+
+  const text = document.getElementById('bulkRegexes').value;
+  const regexes = text.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  if (regexes.length < 2) {
+    showBulkError('Please enter at least 2 regular expressions');
+    return;
+  }
+
+  try {
+    processBulkRegexes(regexes);
+  } catch (error) {
+    showBulkError(error.message);
+  }
+});
+
+document.getElementById('bulkClearBtn').addEventListener('click', () => {
+  document.getElementById('bulkRegexes').value = '';
+  document.getElementById('bulkResultSection').style.display = 'none';
+});
+
+document.getElementById('loadExample').addEventListener('click', () => {
+  const example = `a+b
+b+a
+(a|b)*c
+c(a|b)*
+0*1
+1*0
+(ab)+
+(ba)+`;
+  document.getElementById('bulkRegexes').value = example;
+});
+
+function processRegexes(regex1Str, regex2Str) {
+  // Parse regexes
+  const parser = new RegexParser();
+  const nfa1 = parser.parse(regex1Str);
+  const nfa2 = parser.parse(regex2Str);
+
+  // Visualize individual NFAs
+  const viz1 = new NFAVisualizer(nfa1, 'nfa1');
+  viz1.draw();
+  document.getElementById('nfa1Section').style.display = 'block';
+
+  const viz2 = new NFAVisualizer(nfa2, 'nfa2');
+  viz2.draw();
+  document.getElementById('nfa2Section').style.display = 'block';
+
+  // Compute intersection
+  const intersection = new NFAIntersection(nfa1, nfa2);
+  const intersectionNFA = intersection.intersect();
+
+  // Visualize intersection
+  const vizIntersection = new NFAVisualizer(intersectionNFA, 'intersection');
+  vizIntersection.draw();
+  document.getElementById('intersectionSection').style.display = 'block';
+
+  // Find shortest word
+  const shortestWord = findShortestWord(intersectionNFA);
+
+  // Display result
+  showResult(regex1Str, regex2Str, shortestWord);
+}
+
+function showResult(regex1, regex2, word) {
+  const resultDiv = document.getElementById('result');
+
+  if (word === null) {
+    resultDiv.innerHTML = `
+      <p><strong>No intersection found</strong></p>
+      <p>The regular expressions <code>${escapeHtml(regex1)}</code> and <code>${escapeHtml(regex2)}</code> do not have any common words.</p>
+    `;
+  } else if (word === '') {
+    resultDiv.innerHTML = `
+      <p><strong>Shortest matching word: ε (empty string)</strong></p>
+      <p>Both <code>${escapeHtml(regex1)}</code> and <code>${escapeHtml(regex2)}</code> accept the empty string.</p>
+    `;
+  } else {
+    resultDiv.innerHTML = `
+      <p><strong>Shortest matching word: <code>${escapeHtml(word)}</code></strong></p>
+      <p>This is the shortest string that matches both <code>${escapeHtml(regex1)}</code> and <code>${escapeHtml(regex2)}</code>.</p>
+      <p>Length: ${word.length} character${word.length !== 1 ? 's' : ''}</p>
+    `;
+  }
+
+  document.getElementById('resultSection').style.display = 'block';
+}
+
+function showError(message) {
+  const resultDiv = document.getElementById('result');
+  resultDiv.innerHTML = `
+    <p><strong>Error</strong></p>
+    <p>${escapeHtml(message)}</p>
+  `;
+
+  document.getElementById('resultSection').style.display = 'block';
+  hideOtherSections();
+}
+
+function hideAllSections() {
+  document.getElementById('resultSection').style.display = 'none';
+  document.getElementById('nfa1Section').style.display = 'none';
+  document.getElementById('nfa2Section').style.display = 'none';
+  document.getElementById('intersectionSection').style.display = 'none';
+}
+
+function hideOtherSections() {
+  document.getElementById('nfa1Section').style.display = 'none';
+  document.getElementById('nfa2Section').style.display = 'none';
+  document.getElementById('intersectionSection').style.display = 'none';
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Bulk checking functions
+function processBulkRegexes(regexes) {
+  const parser = new RegexParser();
+  const results = [];
+  const errors = [];
+
+  // Parse all regexes first
+  const nfas = [];
+  for (let i = 0; i < regexes.length; i++) {
+    try {
+      const nfa = parser.parse(regexes[i]);
+      nfas.push({regex: regexes[i], nfa, index: i});
+    } catch (error) {
+      errors.push({index: i, regex: regexes[i], error: error.message});
+    }
+  }
+
+  if (errors.length > 0) {
+    showBulkError(`Failed to parse ${errors.length} regex(es):<br>` +
+      errors.map(e => `Line ${e.index + 1}: <code>${escapeHtml(e.regex)}</code> - ${escapeHtml(e.error)}`).join('<br>'));
+    return;
+  }
+
+  // Check all pairs
+  for (let i = 0; i < nfas.length; i++) {
+    for (let j = i + 1; j < nfas.length; j++) {
+      const nfa1 = nfas[i];
+      const nfa2 = nfas[j];
+
+      const intersection = new NFAIntersection(nfa1.nfa, nfa2.nfa);
+      const intersectionNFA = intersection.intersect();
+      const shortestWord = findShortestWord(intersectionNFA);
+
+      results.push({
+        index1: nfa1.index,
+        index2: nfa2.index,
+        regex1: nfa1.regex,
+        regex2: nfa2.regex,
+        word: shortestWord
+      });
+    }
+  }
+
+  showBulkResults(regexes, results);
+}
+
+function showBulkResults(regexes, results) {
+  const overlaps = results.filter(r => r.word !== null);
+  const unique = results.filter(r => r.word === null);
+
+  // Summary
+  const summaryDiv = document.getElementById('bulkSummary');
+  const allUnique = overlaps.length === 0;
+
+  summaryDiv.innerHTML = `
+    <p><strong>${allUnique ? 'All patterns are unique!' : 'Overlaps detected'}</strong></p>
+    <p>
+      Checked ${regexes.length} patterns (${results.length} pairs)<br>
+      ${unique.length} unique pairs, ${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''}
+    </p>
+  `;
+
+  // Results table
+  const resultsDiv = document.getElementById('bulkResults');
+
+  if (overlaps.length === 0) {
+    resultsDiv.innerHTML = '<p>No overlaps found. All patterns are mutually exclusive.</p>';
+  } else {
+    let tableHtml = `
+      <h3>Overlapping Pairs</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Pattern 1</th>
+            <th>Pattern 2</th>
+            <th>Shortest Match</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    overlaps.forEach(overlap => {
+      const wordDisplay = overlap.word === '' ? 'ε (empty)' : escapeHtml(overlap.word);
+      tableHtml += `
+        <tr>
+          <td><strong>Line ${overlap.index1 + 1}:</strong> <code>${escapeHtml(overlap.regex1)}</code></td>
+          <td><strong>Line ${overlap.index2 + 1}:</strong> <code>${escapeHtml(overlap.regex2)}</code></td>
+          <td><code>${wordDisplay}</code></td>
+        </tr>
+      `;
+    });
+
+    tableHtml += `
+        </tbody>
+      </table>
+    `;
+
+    resultsDiv.innerHTML = tableHtml;
+  }
+
+  document.getElementById('bulkResultSection').style.display = 'block';
+}
+
+function showBulkError(message) {
+  const summaryDiv = document.getElementById('bulkSummary');
+  summaryDiv.innerHTML = `
+    <p><strong>Error</strong></p>
+    <p>${message}</p>
+  `;
+
+  document.getElementById('bulkResults').innerHTML = '';
+  document.getElementById('bulkResultSection').style.display = 'block';
+}
+  </script>
+</body>
+</html>

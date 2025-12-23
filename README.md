@@ -16,6 +16,19 @@ Split long messages into Discord-compatible chunks (2000/4000 character limits).
 
 **Usage:** Open `discord_message_splitter.html` in your browser.
 
+### Regex Intersection Checker
+Find the smallest word that matches two regular expressions using NFAs.
+
+**Features:**
+- NFA simulation with Thompson's construction
+- Pair comparison mode for checking two regexes
+- Bulk uniqueness checking for multiple patterns
+- SVG-based NFA visualization
+- Supports literals, concatenation, alternation, Kleene star, plus, optional, and grouping
+- Client-side only (no data sent to servers)
+
+**Usage:** Open `regex_intersection_checker.html` in your browser.
+
 ## Running
 
 All tools are standalone HTML files. Open directly in any modern browser.
