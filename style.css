@@ -1,0 +1,60 @@
+/* ===== utils house style (self-contained, no framework) ===== */
+:root{
+  --fg:#1a1a1a; --muted:#666; --line:#ccc; --bg:#fcfcfa; --accent:#3a5a8c;
+  --code-bg:#f0f0ec;
+  /* aliases used by tool JS (e.g. discord splitter) */
+  --border:var(--line); --accent-bg:#f3f3ef;
+}
+html{ overflow-y: scroll; }            /* stable scrollbar so width never shifts */
+body{
+  font-family: "Iowan Old Style", "Gelasio", Georgia, serif;
+  max-width: 67ch; margin: 2rem auto; padding: 0 1rem;
+  line-height: 1.6; color: var(--fg); background: var(--bg);
+  overflow-wrap: break-word;
+}
+h1,h2,h3{ line-height: 1.25; }
+header h1{ margin-bottom: 0.2rem; }
+header p{ color: var(--muted); margin-top: 0; }
+a{ color: var(--accent); }
+hr{ border: none; border-top: 1px solid var(--line); margin: 1.5rem 0; }
+
+/* forms */
+input, select, textarea, button{
+  font-family: inherit; font-size: 1rem; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0.25rem 0.4rem;
+  background: #fff;
+}
+textarea{ width: 100%; }
+button{ cursor: pointer; background: #f3f3ef; }
+button:hover{ background: #e8e8e2; }
+label{ cursor: pointer; }
+/* a label that wraps its own input becomes a stacked field */
+form > label{ display: block; margin: 0.5rem 0; }
+form > label > input,
+form > label > select,
+form > label > textarea{ display: block; margin-top: 0.2rem; width: 100%; max-width: 30rem; }
+form > button{ margin: 0.25rem 0.5rem 0.25rem 0; }
+
+/* tables */
+table{ border-collapse: collapse; max-width: 100%; }
+th, td{ border: 1px solid var(--line); padding: 0.3rem 0.5rem; text-align: left; }
+th{ background: #f3f3ef; font-weight: 600; }
+
+/* code */
+code, pre, textarea{ font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+code{ background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+pre{ background: var(--code-bg); padding: 0.75rem; border-radius: 4px; overflow-x: auto; }
+
+/* abbr + quote */
+abbr[title]{ text-decoration: underline dashed; cursor: help; }
+blockquote{
+  margin: 1.5rem 0; padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 3px solid var(--line); font-style: italic; color: #333;
+}
+blockquote p{ margin: 0; }
+blockquote footer{ font-style: normal; font-size: 0.9em; color: var(--muted); margin-top: 0.3rem; }
+
+/* keep wide content inside the column */
+.katex-display{ overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+details, #live, #curve{ max-width: 100%; }
+#tasks{ overflow-x: auto; }
