@@ -4,6 +4,21 @@ Collection of web-based utilities for everyday tasks.
 
 ## Tools
 
+### Estimator (PERT)
+Three-point task estimation with confidence ranges, grounded in Robert C. Martin's
+point in *The Clean Coder* that an estimate is a probability range, not a commitment.
+
+**Features:**
+- Optimistic / nominal / pessimistic per category (impl, review, testing, polish, client comms)
+- PERT expected value (μ = (O+4N+P)/6) and combined uncertainty (σ = √Σσᵢ²)
+- ~68% and ~95% confidence bands with a live bell curve
+- Rough (optimistic-only) vs detailed two-phase workflow
+- Newness multiplier for greenfield work, Fibonacci buckets, review-as-%-of-impl
+- Live LaTeX formula rendering (KaTeX)
+- Client-side only (no data sent to servers)
+
+**Usage:** Open `estimator.html` in your browser.
+
 ### Discord Message Splitter
 Split long messages into Discord-compatible chunks (2000/4000 character limits).
 
@@ -32,3 +47,5 @@ Find the smallest word that matches two regular expressions using NFAs.
 ## Running
 
 All tools are standalone HTML files. Open directly in any modern browser.
+Shared look-and-feel lives in `style.css` (a small self-contained stylesheet,
+no framework).

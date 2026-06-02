@@ -4,15 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Utils</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gelasio:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <main>
+    <header>
         <h1>Utils</h1>
         <p>Collection of web-based utilities for everyday tasks.</p>
-        
+    </header>
+    <main>
         <h2>Available Tools</h2>
-        
+
+        <article>
+            <strong><a href="estimator.html">Estimator (PERT)</a></strong>
+            <p>Three-point task estimation with confidence ranges and a live bell curve.</p>
+            <ul>
+                <li>Optimistic / nominal / pessimistic per category</li>
+                <li>PERT expected value (&mu;) and combined uncertainty (&sigma;)</li>
+                <li>Rough vs detailed two-phase workflow</li>
+                <li>Newness multiplier, Fibonacci buckets, live LaTeX formulas</li>
+            </ul>
+        </article>
+
         <article>
             <strong><a href="discord_message_splitter.html">Discord Message Splitter</a></strong>
             <p>Split long messages into Discord-compatible chunks with smart newline handling.</p>

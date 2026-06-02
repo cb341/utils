@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estimator (PERT)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gelasio:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="style.css">
+<script>
+function typesetMath(root){
+  if(typeof renderMathInElement!=="function") return;
+  renderMathInElement(root||document.body,{
+    delimiters:[
+      {left:"$$",right:"$$",display:true},
+      {left:"\\(",right:"\\)",display:false}
+    ],
+    throwOnError:false
+  });
+}
+window.addEventListener("DOMContentLoaded",function(){
+  typesetMath(document.body);
+  if(window.setModeRadio) setModeRadio();
+  if(window.render) render();
+});
+</script>
+</head>
+<body>
+
+<header>
+  <h1>Estimator</h1>
+  <p>Three-point (<abbr title="Program Evaluation and Review Technique">PERT</abbr>)
+  task estimation with confidence ranges</p>
+</header>
+
+<main>
+
+<p><a href="index.html">Back to Home</a></p>
+
+<blockquote cite="https://www.oreilly.com/library/view/the-clean-coder/9780132542913/">
+  <p>An estimate is a probability range, not a commitment.</p>
+  <footer>&mdash; Robert C. Martin, <cite>The Clean Coder</cite></footer>
+</blockquote>
+<p><small>
+Give three numbers per category, not one.
+<abbr title="Program Evaluation and Review Technique">PERT</abbr> computes expected
+value (μ) and uncertainty (σ). Commitment is a separate decision on top of this.
+</small></p>
+<details ontoggle="if(this.open) typesetMath(this);">
+  <summary><abbr title="Program Evaluation and Review Technique">PERT</abbr> formulas</summary>
+  <p>Per estimated item (category), from optimistic <em>O</em>, nominal <em>N</em>,
+  pessimistic <em>P</em>:</p>
+  $$\mu = \frac{O + 4N + P}{6} \qquad \sigma = \frac{P - O}{6}$$
+  <p>Combined across all items (expected values add; <em>variances</em> add, not σ):</p>
+  $$\mu_{\text{total}} = \sum_i \mu_i \qquad
+    \sigma_{\text{total}} = \sqrt{\sum_i \sigma_i^{\,2}}$$
+  <p>Confidence bands: \( \mu \pm \sigma \) (~68%), \( \mu \pm 2\sigma \) (~95%).
+  Newness multiplies each nominal \(N\). This communicates uncertainty; it is not a guarantee.</p>
+</details>
+
+<p>View:
+<label><input type="radio" name="mode" value="rough" checked onchange="setMode('rough')"> Rough (optimistic only)</label>
+<label><input type="radio" name="mode" value="detail" onchange="setMode('detail')"> Detailed (<abbr title="Program Evaluation and Review Technique">PERT</abbr>)</label>
+</p>
+
+<div id="tasks"></div>
+
+<p>
+  <button onclick="addTask()">+ Add task</button>
+  <button onclick="resetAll()">Reset</button>
+  <button onclick="exportJSON()">Export</button>
+  <button onclick="document.getElementById('importFile').click()">Import</button>
+  <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(this)">
+</p>
+
+<hr>
+<p><b>Expected (μ): <span id="mu">0</span> h</b> &nbsp; σ = <span id="sigma">0</span> h</p>
+<p>~68% confidence: <span id="c68">0</span> h &nbsp;|&nbsp; ~95% confidence: <span id="c95">0</span> h</p>
+<div id="live"></div>
+<div id="curve"></div>
+<p><small id="break"></small></p>
+
+<p>Note: <button type="button" onclick="copyNote()">Copy</button></p>
+<blockquote id="note"></blockquote>
+
+<script>
+var FIB=[0,0.25,0.5,1,2,3,5,8,13,21,34];
+var CATS=["impl","review","testing","polish","comms"];
+var LBL={impl:"Impl",review:"Review",testing:"Testing",polish:"Polish",comms:"Communication"};
+// suggested nominal as % of impl-nominal (seed only; you adjust)
+var RATIO={review:0.75, testing:0.30, polish:0.20, comms:0.05};
+// % options for the "as % of impl" selector on derived categories
+var PCTS=[0,5,10,20,30,50,75,100];
+var MODE="rough";   // "rough" | "detail"
+// newness multiplier applied to NOMINAL of every category in the subtask
+var NEW=[{l:"routine",m:1},{l:"some new",m:1.5},{l:"mostly new",m:2},{l:"greenfield",m:3}];
+
+// task:{name,subs:[sub]}   sub:{name, newIdx, cat:{impl:{o,n,p},...}}
+var STORE="estimator.v1";
+var tasks=load() || [ newTask() ];
+
+function save(){ try{ localStorage.setItem(STORE, JSON.stringify({mode:MODE, tasks:tasks})); }catch(e){} }
+function load(){
+  try{ var d=JSON.parse(localStorage.getItem(STORE)); if(d&&d.tasks){ if(d.mode) MODE=d.mode; return d.tasks; } }catch(e){}
+  return null;
+}
+function exportJSON(){
+  var blob=new Blob([JSON.stringify({mode:MODE,tasks:tasks},null,2)],{type:"application/json"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="estimate.json"; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importJSON(input){
+  var f=input.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){ try{ var d=JSON.parse(rd.result); if(d&&d.tasks){ tasks=d.tasks; if(d.mode) MODE=d.mode; setModeRadio(); render(); } }catch(e){ alert("Invalid file."); } };
+  rd.readAsText(f); input.value="";
+}
+function setModeRadio(){
+  var radios=document.getElementsByName("mode");
+  for(var i=0;i<radios.length;i++) radios[i].checked=(radios[i].value===MODE);
+}
+
+function snap(h){ for(var k=0;k<FIB.length;k++) if(h<=FIB[k]+1e-9) return FIB[k]; return FIB[FIB.length-1]; }
+
+function newSub(){
+  // impl: manual O/N/P. derived cats: a % of impl (default to RATIO), auto-computed.
+  var s={name:"", newIdx:0, cat:{ impl:{o:"",n:"",p:""} }};
+  for(var c in RATIO){ s.cat[c]={ pct: Math.round(RATIO[c]*100) }; }
+  return s;
+}
+function num(v){ var x=parseFloat(v); return isNaN(x)?0:x; }
+function isDerived(cat){ return cat!=="impl"; }
+function filled(v){ return v!=="" && v!==null && v!==undefined && !isNaN(parseFloat(v)); }
+// a subtask only counts once impl O, N and P are ALL present
+function implComplete(s){ var x=s.cat.impl; return filled(x.o)&&filled(x.n)&&filled(x.p); }
+// effective O/N/P for a category: impl is manual; derived = impl.N × pct, bracketed
+function onp(s,cat){
+  if(cat==="impl") return {o:num(s.cat.impl.o), n:num(s.cat.impl.n), p:num(s.cat.impl.p)};
+  var pct=num(s.cat[cat].pct)/100;
+  var n=snap(num(s.cat.impl.n)*pct);
+  return {o:snap(n*0.5), n:n, p:snap(n*2.5)};
+}
+function newTask(){ return {name:"", subs:[newSub()]}; }
+
+function addTask(){ tasks.push(newTask()); render(); }
+function delTask(t){ tasks.splice(t,1); if(!tasks.length) tasks.push(newTask()); render(); }
+function addSub(t){ tasks[t].subs.push(newSub()); render(); }
+function delSub(t,i){ tasks[t].subs.splice(i,1); if(!tasks[t].subs.length) tasks[t].subs.push(newSub()); render(); }
+function resetAll(){
+  if(!confirm("Clear everything?")) return;
+  tasks=[newTask()];
+  document.getElementById("note").innerHTML="";
+  document.getElementById("tasks").innerHTML="";
+  render();
+}
+
+function setMode(m){ MODE=m; render(); }
+function setTaskName(t,v){ tasks[t].name=v; render(); }
+function setSubName(t,i,v){ tasks[t].subs[i].name=v; render(); }
+function setNew(t,i,v){ tasks[t].subs[i].newIdx=parseInt(v); render(); }
+function setONP(t,i,cat,field,v){      // impl only
+  tasks[t].subs[i].cat[cat][field]= v===""? "" : parseFloat(v);
+  render();
+}
+function setPct(t,i,cat,v){            // derived categories
+  tasks[t].subs[i].cat[cat].pct=parseFloat(v);
+  render();
+}
+
+function mult(s){ return NEW[s.newIdx||0].m; }
+// PERT for one category (newness multiplies nominal; P kept >= scaled nominal)
+function pertCat(s,cat){
+  var e=onp(s,cat), m=mult(s);
+  var o=e.o, n=e.n*m, p=Math.max(e.p, n);
+  if(o===0&&n===0&&p===0) return {mu:0,sd:0};   // blank category contributes nothing
+  return { mu:(o+4*n+p)/6, sd:(p-o)/6 };
+}
+function subStats(s){
+  if(!implComplete(s)) return {mu:0, sd:0, incomplete:true};   // don't sum partial estimates
+  var mu=0,vr=0;
+  CATS.forEach(function(c){ var P=pertCat(s,c); mu+=P.mu; vr+=P.sd*P.sd; });
+  return {mu:mu, sd:Math.sqrt(vr), incomplete:false};
+}
+
+function fibSel(t,i,cat,field,val){
+  var x='<select onchange="setONP('+t+','+i+',\''+cat+'\',\''+field+'\',this.value)">';
+  x+='<option value="" '+(val===""?'selected':'')+'>–</option>';   // blank default
+  for(var k=0;k<FIB.length;k++) x+='<option '+(val!==""&&FIB[k]==val?'selected':'')+'>'+FIB[k]+'</option>';
+  return x+'</select>';
+}
+function newSel(t,i,cur){
+  var x='<select onchange="setNew('+t+','+i+',this.value)">';
+  for(var k=0;k<NEW.length;k++) x+='<option value="'+k+'" '+(k==cur?'selected':'')+'>'+NEW[k].l+'</option>';
+  return x+'</select>';
+}
+function pctSel(t,i,cat,cur){
+  var x='<select onchange="setPct('+t+','+i+',\''+cat+'\',this.value)">';
+  for(var k=0;k<PCTS.length;k++) x+='<option '+(PCTS[k]==cur?'selected':'')+'>'+PCTS[k]+'</option>';
+  return x+'</select>%';
+}
+function esc(s){ return (s||"").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+function r(x){ return Math.round(x*10)/10; }
+function r2(x){ return Math.round(x*100)/100; }   // μ shown to 2 decimals
+
+// collect every estimated item's (mu, sd) across the project for the live formula
+function allItems(){
+  var out=[];
+  tasks.forEach(function(task){ task.subs.forEach(function(s){
+    CATS.forEach(function(c){ out.push(pertCat(s,c)); });
+  });});
+  return out;
+}
+// bell curve (normal dist) as inline SVG, annotated with hour values
+function drawCurve(mu, sigma){
+  var el=document.getElementById("curve");
+  if(sigma<=0){ el.innerHTML="<small>(add pessimistic > optimistic to see the curve)</small>"; return; }
+  var W=560, H=210, padB=48, padT=20, padX=40;
+  var lo=mu-3*sigma, hi=mu+3*sigma;            // x-range = ±3σ
+  if(lo<0) lo=0;
+  var x2px=function(x){ return padX + (x-lo)/(hi-lo)*(W-2*padX); };
+  var pdf=function(x){ return Math.exp(-0.5*Math.pow((x-mu)/sigma,2)); }; // peak normalised to 1
+  var y2px=function(y){ return (H-padB) - y*(H-padB-padT); };
+  // curve path
+  var d="", N=120;
+  for(var k=0;k<=N;k++){ var x=lo+(hi-lo)*k/N; var px=x2px(x), py=y2px(pdf(x)); d+=(k?"L":"M")+px.toFixed(1)+" "+py.toFixed(1); }
+  // markers at mu-2s..mu+2s
+  var marks=[
+    {x:mu-2*sigma,l:"−2σ",sub:"~2.5%"},
+    {x:mu-sigma,  l:"−σ", sub:"~16%"},
+    {x:mu,        l:"μ",  sub:"expected"},
+    {x:mu+sigma,  l:"+σ", sub:"~84%"},
+    {x:mu+2*sigma,l:"+2σ",sub:"~97.5%"}
+  ];
+  var lines="", labels="";
+  marks.forEach(function(m){
+    if(m.x<lo||m.x>hi) return;
+    var px=x2px(m.x), top=y2px(pdf(m.x));
+    var hrs=Math.max(0,Math.round(m.x*10)/10);
+    lines+='<line x1="'+px+'" y1="'+(H-padB)+'" x2="'+px+'" y2="'+top+'" stroke="#bbb" stroke-dasharray="3 3"/>';
+    labels+='<text x="'+px+'" y="'+(H-padB+14)+'" text-anchor="middle" font-size="11">'+hrs+'h</text>';
+    labels+='<text x="'+px+'" y="'+(H-padB+26)+'" text-anchor="middle" font-size="9" fill="#888">'+m.l+'</text>';
+  });
+  // shade ±σ (the ~68% region)
+  var sa=x2px(Math.max(lo,mu-sigma)), sb=x2px(Math.min(hi,mu+sigma));
+  var shade='<rect x="'+sa+'" y="'+padT+'" width="'+(sb-sa)+'" height="'+(H-padB-padT)+'" fill="#69c" opacity="0.12"/>';
+  el.innerHTML=
+    '<svg width="'+W+'" height="'+H+'" style="max-width:100%">'
+    +shade
+    +'<line x1="'+padX+'" y1="'+(H-padB)+'" x2="'+(W-padX)+'" y2="'+(H-padB)+'" stroke="#999"/>'
+    +'<path d="'+d+'" fill="none" stroke="#36c" stroke-width="2"/>'
+    +lines+labels
+    +'<text x="'+(W/2)+'" y="'+(H-4)+'" text-anchor="middle" font-size="11" fill="#666">hours (shaded = ~68% likely range)</text>'
+    +'</svg>';
+}
+
+function renderLive(mu, vr, sigma){
+  var el=document.getElementById("live");
+  if(typeof katex==="undefined"){ el.textContent=""; return; }  // KaTeX not loaded yet
+  var items=allItems().filter(function(P){ return P.mu>0; });
+  // cap how many terms we show so it doesn't explode
+  var shownMu = items.slice(0,8).map(function(P){ return r2(P.mu); });
+  var shownVar= items.slice(0,8).map(function(P){ return r(P.sd)+"^2"; });
+  var moreMu = items.length>8 ? "+\\dots" : "";
+  var tex =
+    "\\mu_{\\text{total}} = " + (shownMu.join("+")||"0") + moreMu + " = " + r2(mu) + "\\;\\text{h}"
+    + "\\\\[4pt]"
+    + "\\sigma_{\\text{total}} = \\sqrt{" + (shownVar.join("+")||"0") + moreMu + "} = " + r(sigma) + "\\;\\text{h}"
+    + "\\\\[4pt]"
+    + "68\\%:\\; " + r(mu-sigma) + "\\text{–}" + r(mu+sigma)
+    + "\\quad 95\\%:\\; " + r(Math.max(0,mu-2*sigma)) + "\\text{–}" + r(mu+2*sigma);
+  try{ katex.render(tex, el, {displayMode:true, throwOnError:false}); }
+  catch(e){ el.textContent=""; }
+}
+
+function render(){
+  var host=document.getElementById("tasks"); host.innerHTML="";
+  var sumMu=0, sumVar=0;
+  var catMu={}; CATS.forEach(function(c){ catMu[c]=0; });   // per-category project totals
+
+  tasks.forEach(function(task,t){
+    var taskMu=0, taskVar=0, subBlocks="";
+    task.subs.forEach(function(s,i){
+      var st=subStats(s);
+      taskMu+=st.mu; taskVar+=st.sd*st.sd;
+      if(!st.incomplete){ CATS.forEach(function(c){ catMu[c]+=pertCat(s,c).mu; }); }
+      var nameIn='<input value="'+esc(s.name)+'" size="16" placeholder="subtask" onchange="setSubName('+t+','+i+',this.value)">';
+      if(MODE==="rough"){
+        // rough: name + optimistic impl only
+        subBlocks+='<p style="margin-left:16px">&bull; '+nameIn
+          +' &nbsp; optimistic impl: '+fibSel(t,i,"impl","o",s.cat.impl.o)+'h'
+          +' <button onclick="delSub('+t+','+i+')">x</button></p>';
+      } else {
+        // detailed: full PERT table
+        var catRows="";
+        CATS.forEach(function(c){
+          var e=onp(s,c), P=pertCat(s,c);
+          if(c==="impl"){
+            catRows+='<tr><td>'+LBL[c]+'</td><td></td>'
+              +'<td>'+fibSel(t,i,c,"o",s.cat.impl.o)+'</td>'
+              +'<td>'+fibSel(t,i,c,"n",s.cat.impl.n)+'</td>'
+              +'<td>'+fibSel(t,i,c,"p",s.cat.impl.p)+'</td>'
+              +'<td>'+r2(P.mu)+'</td><td>'+r(P.sd)+'</td></tr>';
+          } else {
+            catRows+='<tr><td>'+LBL[c]+'</td><td>'+pctSel(t,i,c,s.cat[c].pct)+'</td>'
+              +'<td>'+(e.o||"–")+'</td><td>'+(e.n||"–")+'</td><td>'+(e.p||"–")+'</td>'
+              +'<td>'+r2(P.mu)+'</td><td>'+r(P.sd)+'</td></tr>';
+          }
+        });
+        subBlocks+=
+          '<p style="margin-left:16px">&bull; '+nameIn+' '
+          +'newness '+newSel(t,i,s.newIdx||0)+' &times;'+mult(s)+' '
+          +'<button onclick="delSub('+t+','+i+')">x</button>'
+          +'<table border="1" cellpadding="3" style="margin:4px 0 0 16px">'
+          +'<thead><tr><th>Category</th><th>% of impl</th><th>O</th><th>N</th><th>P</th><th>μ</th><th>σ</th></tr></thead>'
+          +'<tbody>'+catRows+'</tbody>'
+          +'<tfoot><tr><td><b>subtask</b></td><td colspan=4>'
+          +(st.incomplete?'<small style="color:#c00">fill impl O, N, P to count</small>':'')+'</td>'
+          +'<td><b>'+(st.incomplete?'–':r2(st.mu))+'</b></td><td>'+(st.incomplete?'–':r(st.sd))+'</td></tr></tfoot></table></p>';
+      }
+    });
+    sumMu+=taskMu; sumVar+=taskVar;
+    host.innerHTML+=
+      '<p><b>Task:</b> <input value="'+esc(task.name)+'" size="28" onchange="setTaskName('+t+',this.value)"> '
+      +'<button onclick="delTask('+t+')">delete task</button> '
+      +'&nbsp; task μ '+r2(taskMu)+'h, σ '+r(Math.sqrt(taskVar))+'</p>'
+      +subBlocks
+      +'<p style="margin-left:16px"><button onclick="addSub('+t+')">+ subtask</button></p><hr>';
+  });
+
+  var sigma=Math.sqrt(sumVar);
+
+  if(MODE==="rough"){
+    // rough = sum of optimistic impls only
+    var roughO=0; tasks.forEach(function(tk){ tk.subs.forEach(function(s){ roughO+=num(s.cat.impl.o); }); });
+    document.getElementById("mu").innerHTML=r(roughO)+" (optimistic impl only)";
+    document.getElementById("sigma").innerHTML="— switch to Detailed for PERT";
+    document.getElementById("c68").innerHTML="—";
+    document.getElementById("c95").innerHTML="—";
+    document.getElementById("live").innerHTML="";
+    document.getElementById("curve").innerHTML="";
+    document.getElementById("break").innerHTML=
+      "Rough pass: best-case impl only. This is a deliberate floor — it WILL grow. "
+      +"Switch to Detailed to add review/testing/polish/comms and O/N/P ranges.";
+    setNote([
+      "Optimistic impl: "+r(roughO)+"h",
+      "———",
+      "Rough best-case floor. Will grow. Refine in Detailed view."
+    ]);
+    return;
+  }
+
+  document.getElementById("mu").innerHTML=r2(sumMu);
+  document.getElementById("sigma").innerHTML=r(sigma);
+  document.getElementById("c68").innerHTML=r(sumMu-sigma)+" – "+r(sumMu+sigma);
+  document.getElementById("c95").innerHTML=r(Math.max(0,sumMu-2*sigma))+" – "+r(sumMu+2*sigma);
+
+  renderLive(sumMu, sumVar, sigma);
+  drawCurve(sumMu, sigma);
+  document.getElementById("break").innerHTML=
+    "Bands from PERT (see formulas above). Newness multiplies each nominal. "
+    +"Communicates uncertainty, not a guarantee.";
+
+  var lines=["Mean ONP based estimate", "———"];
+  CATS.forEach(function(c){
+    if(catMu[c]<=0) return;
+    var pct=sumMu? Math.round(catMu[c]/sumMu*100):0;
+    lines.push(LBL[c]+": "+r(catMu[c])+"h ("+pct+"%)");
+  });
+  lines.push("———");
+  lines.push("Expected (μ): "+r2(sumMu)+"h");
+  lines.push("~68%: "+r(Math.max(0,sumMu-sigma))+"–"+r(sumMu+sigma)+"h");
+  lines.push("~95%: "+r(Math.max(0,sumMu-2*sigma))+"–"+r(sumMu+2*sigma)+"h");
+  setNote(lines);
+}
+
+function setNote(lines){
+  // store plain-text (newlines) for copy; render with <br> for display
+  var el=document.getElementById("note");
+  el.dataset.plain=lines.join("\n");
+  el.innerHTML=lines.map(esc).join("<br>");
+  save();   // every render ends here -> auto-save
+}
+function copyNote(){
+  var t=document.getElementById("note").dataset.plain||"";
+  if(navigator.clipboard) navigator.clipboard.writeText(t);
+}
+
+render();
+</script>
+
+</main>
+</body>
+</html>
